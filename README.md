@@ -1,93 +1,188 @@
-# aioli-stratigraph
+# Aïoli + aioli-data-api (Pour un déploiement local)
 
 
+## Initialiser le dossier
 
-## Getting started
+```bash
+./init.sh
+```
+### Prépare ce dossier pour le premier démarrage :
+###  - crée .env à partir de .env.example et y renseigne HOST_PROJECT_PATH
+###  - extrait src/bin de l'image (nécessaire aux conteneurs de traitement lancés par Aïoli)
+###  - crée l'arborescence workspace/
+###  - vérifie la présence de l'image aioli-data-api
+###  - récupère les images de traitement (potreeconverter, matlab2017a, micmac)
+### Usage : ./init.sh  (à relancer après chaque mise à jour de l'image aioli-web)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Démarrer
 
-## Add your files
+** MERCI D'ADAPTER LES PORTS DANS .env **
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+```bash
+docker compose up -d
+docker compose ps
+```
+
+- Aïoli : `http://localhost:8080`
+- Keycloak : `http://localhost:8081`
+- API : `http://127.0.0.1:8001/docs` 
+- ArangoDB : `http://127.0.0.1:8529` 
+
+## Construction du docker Keycloak
+
+1. Se connecter
+```bash
+login: admin
+password: admin
+```
+2. Créer le realm du projet (dans mon cas "testAioli")
+
+3. Créer un client AioliClient
+
+Client ID : AioliClient
+Root URL : http://localhost:8080
+Home URL : http://localhost:8080
+Valid redirect URIs : http://localhost:8080/_proc/keycloak_callback and add  http://localhost:8080/*
+Valid post logout redirect URIs : http://localhost:8080
+Web origins : http://localhost:8080
+Admin URL : http://localhost:8080
+
+Client authentication : ON
+Authorization : OFF
+Authentication flow : Standard flow
+PKCE Method : -
+Require DPoP bound tokens : OFF
+
+3. Créer un user
+`
+
+### Construction de l'API Data-Access
+
+1. Configurer Keycloak
+
+- Créer le client `aioli-data-api` dans le realm existant. Ne pas activer de login interactif pour ce client. **IMPORTANT** Ajouter les **client roles** `synchronization` et `maintenance`.
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.espadon.net/Espadon/aioli-stratigraph.git
-git branch -M main
-git push -uf origin main
+Client ID : aioli-data-api
+Root URL :
+Home URL :
+Valid redirect URIs : /*
+Valid post logout redirect URIs :
+Web origins : /*
+Admin URL :
+
+Client authentication : OFF
+Authorization : OFF
+Authentication flow : Standard flow
+PKCE Method : -
+Require DPoP bound tokens : OFF
+
+# Dans l'onglet Roles
+maintenance
+synchronization
 ```
 
-## Integrate with your tools
 
-- [ ] [Set up project integrations](http://gitlab.espadon.net/Espadon/aioli-stratigraph/-/settings/integrations)
+- Créer le client public `aioli-data-api-swagger` avec **Standard flow** activé et **PKCE S256**. Désactiver Direct Access Grants. Configurer **Valid redirect URIs** sur `https://PUBLIC-URL-OF-THE-API/docs/oauth2-redirect` (ou l'URL locale exacte pendant les tests) et les Web origins correspondantes.
 
-## Collaborate with your team
+```
+Client ID : aioli-data-api-swagger
+Root URL : http://localhost:8000
+Home URL : http://localhost:8000
+Valid redirect URIs : http://localhost:8000/docs/oauth2-redirect
+Valid post logout redirect URIs : http://localhost:8000/docs/oauth2-redirect
+Web origins : http://localhost:8000
+Admin URL : http://localhost:8000
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+Client authentication : OFF
+Authorization : OFF
+Authentication flow : Standard flow
+PKCE Method : S256
+Require DPoP bound tokens : OFF
+```
 
-## Test and Deploy
+- Configurer un Audience mapper pour que les access tokens destinés à DataAPi contiennent  `aioli-data-api` dans le champ `aud`.
 
-Use the built-in continuous integration in GitLab.
+**NB :**
+	- `aud` (audience) : indique que le token est destiné à notre API `aioli-data-api`.
+	- `resource_access` (rôles) : indique si l'utilisateur possède les rôles `synchronization` et/ou `maintenance`.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+Par exemple, un administrateur connecté via Swagger devrait obtenir un token contenant quelque chose comme :
 
-***
+```
+{
+  "sub": "a605f92c-xxxx-xxxx-xxxx-b133df55fa56",
+  "aud": [
+    "aioli-data-api"
+  ],
+  "resource_access": {
+    "aioli-data-api": {
+      "roles": [
+        "synchronization",
+        "maintenance"
+      ]
+    }
+  }
+}
+```
 
-# Editing this README
+Il s'agit d'un extrait simplifié : le véritable token contient d'autres champs, notamment `iss`, `exp` et `azp`.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+- Dans la console d'administration Keycloak :
 
-## Suggestions for a good README
+1. Aller dans Clients → `aioli-data-api-swagger`.
+2. Ouvrir l'onglet Client scopes.
+3. Cliquer sur le scope dédié au client, généralement nommé `aioli-data-api-swagger-dedicated`.
+4. Ouvrir l'onglet Mappers, puis cliquer sur Configure a new mapper.
+5. Sélectionner Audience et renseigner les champs suivants :
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+|Champ|Valeur|
+|---|---|
+|Name|`aioli-data-api-audience`|
+|Included Client Audience|`aioli-data-api`|
+|Included Custom Audience|Laisser vide|
+|Add to access token|Activé|
+|Add to ID token|Désactivé, si proposé|
 
-## Name
-Choose a self-explaining name for your project.
+2. Enregistrer avec Save.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+Ce mapper indique à Keycloak que les access tokens délivrés au client Swagger sont également destinés à DataAPI.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+3. Attribuer les rôles aux users qui auront le statut d'administrateurs : Aller dans Users → ton utilisateur → Role mapping → Assign role et ajouter les rôles `synchronization` et `maintenance`.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+**NB** Pour vérifier le client scope `roles` :
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Retourner dans Clients → `aioli-data-api-swagger` → Client scopes. et Vérifier que le scope `roles` est bien associé au client, idéalement avec le type Default.
+On peut aussi aller dans Client scopes → roles → Mappers et vérifier la présence du mapper client roles. Il est normalement préconfiguré pour écrire les rôles dans `resource_access.${client_id}.roles`. Si Full scope allowed est désactivé pour Swagger, il faudra aussi autoriser explicitement les rôles `aioli-data-api` dans ses role scope mappings.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+4. pour vérifier le résultat
+- aller dans Clients → `aioli-data-api-swagger` → Client scopes.
+- Ouvrir Evaluate et sélectionner l'utilisateur administrateur dans le champ Users.
+- Cliquer sur Generated access token (ou l'équivalent selon ta version).
+- On devrait retrouver : Exemple de l'access token attendu
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+```json
+{
+  "aud": ["aioli-data-api"],
+  "resource_access": {
+    "aioli-data-api": {
+      "roles": [
+        "synchronization",
+        "maintenance"
+      ]
+    }
+  }
+}
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+5. Accès au swagger et test :
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+Dans mon cas, j'y accède à http://localhost:8000/docs
+Cliquer sur **Authorize** et encore **Authorize*** tout en bas de la modale et tester les endpoints
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+  ## NB : Si vous utilisez déjà sur votre serveur :
+  - couchdb
+  -  keycloak
+  - arangodb
+  Merci de les commenter dans le fichier docker-compose et d'adapter le fichier .env

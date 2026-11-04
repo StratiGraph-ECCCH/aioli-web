@@ -1,0 +1,13 @@
+{
+    "BIN_ROOT": "/var/www/html/src/bin/",
+    "DATABASE_ROOT": "http://admin:password@couchdb:5984/",
+    "DATABASE_ROOT_CLIENT": "http://admin:password@localhost:5984/",
+    "OT_ROOT": "https://opentheso.espadon.net/",
+    "WORKSPACE_ROOT": "workspace/",
+    "TEMP_ROOT": "tmp/",
+    "DOCUMENT_ROOT": "http://localhost/",
+    "PIPELINES_FILE": "conf/pipelines.json",
+    "MAIL_HOST": "13.5.22.100",
+    "MAIL_PORT": "25",
+    "MAIL_FROM": "noreply@cnrs.fr"
+}

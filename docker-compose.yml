@@ -1,0 +1,132 @@
+name: ${COMPOSE_PROJECT_NAME:-aioli}
+
+services:
+  # Service PHP avec Apache
+  web:
+    image: ${AIOLI_WEB_IMAGE:-aioli-web:prod}
+    container_name: aioli-web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    volumes:
+      - ./workspace:/var/www/html/workspace
+      - ./src/bin:/var/www/html/src/bin
+      - ./config/constants.json:/var/www/html/conf/constants.json
+      - ./config/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - COUCHDB_HOST=couchdb
+      - COUCHDB_PORT=5984
+      - COUCHDB_USER=${COUCHDB_USER:-admin}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:-password}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
+      - KEYCLOAK_CALLBACK_URL=${KEYCLOAK_CALLBACK_URL}
+      - KEYCLOAK_ISSUER=${KEYCLOAK_ISSUER}
+      - KEYCLOAK_AUTHORIZATION_ENDPOINT=${KEYCLOAK_AUTHORIZATION_ENDPOINT}
+      - KEYCLOAK_TOKEN_ENDPOINT=${KEYCLOAK_TOKEN_ENDPOINT}
+      - KEYCLOAK_USERINFO_ENDPOINT=${KEYCLOAK_USERINFO_ENDPOINT}
+      - KEYCLOAK_END_SESSION_ENDPOINT=${KEYCLOAK_END_SESSION_ENDPOINT}
+      - HOST_PROJECT_PATH=${HOST_PROJECT_PATH:?HOST_PROJECT_PATH manquant dans .env, lancer ./init.sh}
+    depends_on:
+      - couchdb
+    networks:
+      - aioli-network
+    restart: unless-stopped
+
+  # Service CouchDB
+  couchdb:
+    image: couchdb:3.3
+    container_name: aioli-couchdb
+    ports:
+      - "${COUCHDB_PORT:-5984}:5984"
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER:-admin}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:-password}
+    volumes:
+      - couchdb-data:/opt/couchdb/data
+      - couchdb-config:/opt/couchdb/etc/local.d
+    networks:
+      - aioli-network
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    container_name: keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME: ${KC_HOSTNAME:-http://localhost:8081}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+    networks:
+      - aioli-network
+    restart: unless-stopped
+
+  # Service ArangoDB (cible de la synchronisation)
+  arangodb:
+    image: arangodb:${ARANGO_VERSION:-3.11.14}
+    container_name: aioli-arangodb
+    ports:
+      - "127.0.0.1:${ARANGO_PORT:-8529}:8529"
+    environment:
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:?ARANGO_ROOT_PASSWORD manquant dans .env}
+      # Lu par config/arango-init.js pour créer la base au premier démarrage
+      - ARANGO_DB=${ARANGO_DB:-aioli}
+    volumes:
+      - arangodb-data:/var/lib/arangodb3
+      - arangodb-apps:/var/lib/arangodb3-apps
+      - ./config/arango-init.js:/docker-entrypoint-initdb.d/arango-init.js:ro
+    networks:
+      - aioli-network
+    restart: unless-stopped
+
+  # API de synchronisation Aïoli (CouchDB) -> ArangoDB
+  data-api:
+    image: ${AIOLI_DATA_API_IMAGE:-aioli-data-api:prod}
+    container_name: aioli-data-api
+    ports:
+      - "127.0.0.1:${API_PORT:-8001}:8000"
+    environment:
+      # Aïoli et CouchDB sont dans la même stack : on les joint par leur nom de service
+      - AIOLI_URL=${DATA_API_AIOLI_URL:-http://aioli-web:80/home}
+      - AIOLI_COUCH_URL=${DATA_API_COUCH_URL:-http://aioli-couchdb:5984}
+      - AIOLI_COUCH_USERNAME=${COUCHDB_USER:-admin}
+      - AIOLI_COUCH_PASSWORD=${COUCHDB_PASSWORD:-password}
+      - ARANGO_URL=http://arangodb:8529
+      - ARANGO_DB=${ARANGO_DB:-aioli}
+      - ARANGO_USER=root
+      - ARANGO_PASS=${ARANGO_ROOT_PASSWORD}
+      - SYNC_BATCH_SIZE=${SYNC_BATCH_SIZE:-500}
+      - SYNC_POINTCLOUD_METADATA=${SYNC_POINTCLOUD_METADATA:-false}
+      - DELETE_MODE=${DELETE_MODE:-soft}
+      # Préfixés DATA_API_ pour ne pas entrer en conflit avec le client Keycloak d'Aïoli
+      - KEYCLOAK_URL=${DATA_API_KEYCLOAK_URL:-http://localhost:8081}
+      - KEYCLOAK_INTERNAL_URL=${DATA_API_KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}
+      - KEYCLOAK_REALM=${DATA_API_KEYCLOAK_REALM}
+      - KEYCLOAK_CLIENT_ID=${DATA_API_KEYCLOAK_CLIENT_ID:-aioli-data-api}
+      - KEYCLOAK_ROLE_CLIENT_ID=${DATA_API_KEYCLOAK_ROLE_CLIENT_ID:-aioli-data-api}
+      - KEYCLOAK_SWAGGER_CLIENT_ID=${DATA_API_KEYCLOAK_SWAGGER_CLIENT_ID:-aioli-data-api-swagger}
+    depends_on:
+      - couchdb
+      - keycloak
+      - arangodb
+    networks:
+      - aioli-network
+    restart: unless-stopped
+
+networks:
+  aioli-network:
+    driver: bridge
+
+volumes:
+  couchdb-data:
+  couchdb-config:
+  keycloak-data:
+  arangodb-data:
+  arangodb-apps:
