@@ -5,19 +5,20 @@
 
 ```bash
 ./init.sh
+
+Prépare ce dossier pour le premier démarrage :
+  - crée .env à partir de .env.example et y renseigne HOST_PROJECT_PATH
+  - extrait src/bin de l'image (nécessaire aux conteneurs de traitement lancés par Aïoli)
+  - crée l'arborescence workspace/
+  - vérifie la présence de l'image aioli-data-api
+  - récupère les images de traitement (potreeconverter, matlab2017a, micmac)
+ Usage : ./init.sh  (à relancer après chaque mise à jour de l'image aioli-web)
 ```
-### Prépare ce dossier pour le premier démarrage :
-###  - crée .env à partir de .env.example et y renseigne HOST_PROJECT_PATH
-###  - extrait src/bin de l'image (nécessaire aux conteneurs de traitement lancés par Aïoli)
-###  - crée l'arborescence workspace/
-###  - vérifie la présence de l'image aioli-data-api
-###  - récupère les images de traitement (potreeconverter, matlab2017a, micmac)
-### Usage : ./init.sh  (à relancer après chaque mise à jour de l'image aioli-web)
 
 
 ## Démarrer
 
-** MERCI D'ADAPTER LES PORTS DANS .env **
+** MERCI D'ADAPTER LES PORTS DANS .env et le fichier constants.json dans /conf**
 
 ```bash
 docker compose up -d
@@ -40,6 +41,7 @@ password: admin
 
 3. Créer un client AioliClient
 
+```
 Client ID : AioliClient
 Root URL : http://localhost:8080
 Home URL : http://localhost:8080
@@ -53,9 +55,8 @@ Authorization : OFF
 Authentication flow : Standard flow
 PKCE Method : -
 Require DPoP bound tokens : OFF
-
+```
 3. Créer un user
-`
 
 ### Construction de l'API Data-Access
 
@@ -182,7 +183,9 @@ Dans mon cas, j'y accède à http://localhost:8000/docs
 Cliquer sur **Authorize** et encore **Authorize*** tout en bas de la modale et tester les endpoints
 
   ## NB : Si vous utilisez déjà sur votre serveur :
+
   - couchdb
   -  keycloak
   - arangodb
+  
   Merci de les commenter dans le fichier docker-compose et d'adapter le fichier .env
