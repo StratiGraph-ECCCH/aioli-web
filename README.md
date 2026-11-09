@@ -185,7 +185,7 @@ Cliquer sur **Authorize** et encore **Authorize*** tout en bas de la modale et t
   ## NB : Si vous utilisez déjà sur votre serveur :
 
   - couchdb
-  -  keycloak
+  - keycloak
   - arangodb
   
   Merci de les commenter dans le fichier docker-compose et d'adapter le fichier .env
